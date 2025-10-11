@@ -5,6 +5,8 @@ An advanced DeFi tool for detecting and executing cross-DEX arbitrage opportunit
 ![Flash Loan](https://img.shields.io/badge/Flash%20Loans-Enabled-purple)
 ![MEV](https://img.shields.io/badge/MEV-Optimized-green)
 ![Status](https://img.shields.io/badge/Status-Live-success)
+![Version](https://img.shields.io/badge/Version-2.0-blue)
+![Enhanced](https://img.shields.io/badge/Enhanced-Features-orange)
 
 ## 🎯 Overview
 
@@ -256,12 +258,6 @@ This is an open-source project. Contributions welcome:
 - Compliance with local regulations
 - Tax obligations on profits
 - Gas costs and failed transactions
-
-## �� Support
-
-- Documentation: [Link]
-- Discord: [Community]
-- Twitter: [@FlashArbitrage]
 
 ---
 
