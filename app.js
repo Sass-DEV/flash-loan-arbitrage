@@ -9,6 +9,24 @@ let profitHistory = [];
 let currentGasPrice = 35;
 let currentBlock = 18234567;
 let scanInterval;
+let soundEnabled = true;
+let selectedStrategy = 'all';
+let walletConnected = false;
+let userAddress = null;
+
+// Advanced Configuration
+const CONFIG = {
+    updateInterval: 3000,
+    maxOpportunities: 100,
+    soundThreshold: 500,
+    autoExecuteThreshold: 1000,
+    strategies: {
+        triangular: true,
+        crossDex: true,
+        stablecoin: true,
+        flashMint: true
+    }
+};
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -31,11 +49,21 @@ async function connectWallet() {
         });
 
         if (accounts.length > 0) {
-            const address = accounts[0];
-            const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+            userAddress = accounts[0];
+            const shortAddress = `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`;
             
+            // Update UI
+            const walletBtn = document.querySelector('#connectWallet span');
+            if (walletBtn) {
+                walletBtn.textContent = shortAddress;
+            }
+            
+            walletConnected = true;
             showNotification('Wallet connected successfully!', 'success');
-            console.log('Connected:', address);
+            console.log('Connected:', userAddress);
+            
+            // Load user-specific data
+            loadUserHistory();
         }
     } catch (error) {
         console.error('Error connecting wallet:', error);
@@ -66,58 +94,109 @@ function stopScanning() {
     showNotification('Scanner stopped', 'info');
 }
 
-// Find Arbitrage Opportunities (Simulated)
+// Find Arbitrage Opportunities (Enhanced)
 function findArbitrageOpportunities() {
     const minProfit = parseFloat(document.getElementById('min-profit').value) || 100;
     const maxGas = parseFloat(document.getElementById('max-gas').value) || 150;
     
-    // Simulate finding opportunities with various parameters
+    // Enhanced token pairs with more realistic combinations
     const pairs = [
-        { from: 'WETH', to: 'USDC', via: 'WETH' },
-        { from: 'DAI', to: 'USDT', via: 'DAI' },
-        { from: 'WBTC', to: 'WETH', via: 'WBTC' },
-        { from: 'USDC', to: 'DAI', via: 'USDC' },
-        { from: 'MATIC', to: 'USDC', via: 'MATIC' }
+        { from: 'WETH', to: 'USDC', via: 'WETH', type: 'triangular' },
+        { from: 'DAI', to: 'USDT', via: 'DAI', type: 'stablecoin' },
+        { from: 'WBTC', to: 'WETH', via: 'WBTC', type: 'crossDex' },
+        { from: 'USDC', to: 'DAI', via: 'USDC', type: 'stablecoin' },
+        { from: 'MATIC', to: 'USDC', via: 'MATIC', type: 'triangular' },
+        { from: 'UNI', to: 'WETH', via: 'UNI', type: 'crossDex' },
+        { from: 'LINK', to: 'USDC', via: 'LINK', type: 'triangular' },
+        { from: 'AAVE', to: 'WETH', via: 'AAVE', type: 'crossDex' }
     ];
     
     const dexRoutes = [
         ['Uniswap V3', 'SushiSwap', 'Uniswap V3'],
         ['Curve', 'Balancer', 'Curve'],
         ['Balancer', 'Uniswap V2', 'SushiSwap'],
-        ['1inch', 'Curve', 'Balancer']
+        ['1inch', 'Curve', 'Balancer'],
+        ['Uniswap V3', 'Curve', 'SushiSwap'],
+        ['PancakeSwap', '1inch', 'Uniswap V3']
     ];
     
-    // Random opportunity generation
-    if (Math.random() > 0.6) {
+    // More sophisticated opportunity generation
+    if (Math.random() > 0.5) {
         const pair = pairs[Math.floor(Math.random() * pairs.length)];
         const route = dexRoutes[Math.floor(Math.random() * dexRoutes.length)];
-        const profit = Math.random() * 2000 + 50;
+        const baseProfit = Math.random() * 3000 + 50;
+        const volatilityBonus = Math.random() * 500;
+        const profit = baseProfit + volatilityBonus;
+        
+        // Filter by strategy if selected
+        if (selectedStrategy !== 'all' && pair.type !== selectedStrategy) {
+            return;
+        }
         
         if (profit >= minProfit && currentGasPrice <= maxGas) {
             const opportunity = {
-                id: Date.now(),
+                id: Date.now() + Math.random(),
                 pair: `${pair.from} → ${pair.to} → ${pair.via}`,
                 route: route.join(' → '),
                 profit: profit.toFixed(2),
-                flashLoanAmount: (Math.random() * 50 + 5).toFixed(2),
+                flashLoanAmount: (Math.random() * 100 + 10).toFixed(2),
                 gasCost: (currentGasPrice * 0.45).toFixed(2),
-                priceImpact: (Math.random() * 0.5).toFixed(2),
+                priceImpact: (Math.random() * 0.8).toFixed(2),
                 successRate: Math.floor(Math.random() * 30 + 70),
                 timestamp: new Date(),
-                isProfitable: profit > 500
+                isProfitable: profit > 500,
+                strategy: pair.type,
+                confidence: calculateConfidence(profit, currentGasPrice),
+                estimatedTime: Math.floor(Math.random() * 30 + 10) // seconds
             };
             
             opportunities.unshift(opportunity);
             
-            // Keep only last 20 opportunities
-            if (opportunities.length > 20) {
+            // Play sound for highly profitable opportunities
+            if (soundEnabled && profit > CONFIG.soundThreshold) {
+                playAlertSound();
+            }
+            
+            // Check for auto-execute
+            if (walletConnected && profit > CONFIG.autoExecuteThreshold) {
+                autoExecuteOpportunity(opportunity);
+            }
+            
+            // Keep only last opportunities based on config
+            if (opportunities.length > CONFIG.maxOpportunities) {
                 opportunities.pop();
             }
             
-            // Update counter
+            // Update counter and analytics
             updateOpportunityCount();
+            updateAnalytics(opportunity);
         }
     }
+}
+
+// Calculate confidence score
+function calculateConfidence(profit, gasPrice) {
+    let confidence = 50;
+    if (profit > 1000) confidence += 20;
+    if (profit > 2000) confidence += 10;
+    if (gasPrice < 30) confidence += 10;
+    if (gasPrice < 20) confidence += 10;
+    return Math.min(confidence, 95);
+}
+
+// Auto-execute high-value opportunities
+function autoExecuteOpportunity(opportunity) {
+    if (opportunity.confidence > 85) {
+        showNotification(`Auto-executing high-value opportunity: $${opportunity.profit}`, 'success');
+        executeTrade(opportunity.id);
+    }
+}
+
+// Play alert sound
+function playAlertSound() {
+    const audio = new Audio('data:audio/wav;base64,UklGRoQFAABXQVZFZm10IBAAAAABAAEAIlYAAIhYAQACABAAZGF0YWAFY=');
+    audio.volume = 0.5;
+    audio.play().catch(e => console.log('Audio play failed:', e));
 }
 
 // Update Opportunities List in UI
@@ -272,7 +351,7 @@ function calculateProfit() {
     showNotification(`Net profit calculated: $${netProfit.toFixed(2)}`, 'info');
 }
 
-// Update Statistics
+// Update Statistics (Enhanced)
 function updateStats() {
     // Update opportunity count
     updateOpportunityCount();
@@ -287,9 +366,44 @@ function updateStats() {
         : 0;
     document.getElementById('success-rate').textContent = successRate;
     
-    // Update gas price
-    currentGasPrice = Math.floor(Math.random() * 50 + 20);
+    // Update gas price with more realistic variation
+    const gasVariation = Math.sin(Date.now() / 10000) * 10;
+    currentGasPrice = Math.floor(35 + gasVariation + Math.random() * 20);
     document.getElementById('gas-price').textContent = currentGasPrice;
+    
+    // Update additional metrics
+    updateNetworkHealth();
+    updateTopPerformers();
+}
+
+// Update network health indicator
+function updateNetworkHealth() {
+    const health = currentGasPrice < 50 ? 'Optimal' : currentGasPrice < 100 ? 'Moderate' : 'Congested';
+    const healthColor = currentGasPrice < 50 ? 'green' : currentGasPrice < 100 ? 'yellow' : 'red';
+    
+    // Update UI if element exists
+    const healthElement = document.getElementById('network-health');
+    if (healthElement) {
+        healthElement.textContent = health;
+        healthElement.className = `text-${healthColor}-400`;
+    }
+}
+
+// Update top performing strategies
+function updateTopPerformers() {
+    const strategyPerformance = {};
+    opportunities.forEach(opp => {
+        if (!strategyPerformance[opp.strategy]) {
+            strategyPerformance[opp.strategy] = { count: 0, totalProfit: 0 };
+        }
+        strategyPerformance[opp.strategy].count++;
+        strategyPerformance[opp.strategy].totalProfit += parseFloat(opp.profit);
+    });
+    
+    // Update UI with top strategies
+    Object.entries(strategyPerformance).forEach(([strategy, data]) => {
+        console.log(`Strategy ${strategy}: ${data.count} opportunities, $${data.totalProfit.toFixed(2)} potential`);
+    });
 }
 
 // Update Opportunity Count
@@ -446,10 +560,172 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
+// Enhanced initialization
+document.addEventListener('DOMContentLoaded', () => {
+    // Add event listeners for new features
+    initializeAdvancedFeatures();
+    
+    // Add keyboard shortcuts
+    initializeKeyboardShortcuts();
+    
+    // Load saved settings
+    loadUserSettings();
+});
+
+// Initialize advanced features
+function initializeAdvancedFeatures() {
+    // Strategy filter
+    const strategyFilter = document.createElement('select');
+    strategyFilter.id = 'strategy-filter';
+    strategyFilter.className = 'bg-black/50 border border-purple-500/30 rounded-lg px-3 py-2 text-sm';
+    strategyFilter.innerHTML = `
+        <option value="all">All Strategies</option>
+        <option value="triangular">Triangular</option>
+        <option value="crossDex">Cross-DEX</option>
+        <option value="stablecoin">Stablecoin</option>
+    `;
+    strategyFilter.addEventListener('change', (e) => {
+        selectedStrategy = e.target.value;
+        filterOpportunities();
+    });
+    
+    // Sound toggle
+    const soundToggle = document.createElement('button');
+    soundToggle.id = 'sound-toggle';
+    soundToggle.className = 'bg-black/30 px-3 py-2 rounded-lg text-sm';
+    soundToggle.innerHTML = `<i class="fas fa-volume-up"></i>`;
+    soundToggle.addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        soundToggle.innerHTML = soundEnabled ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+        localStorage.setItem('soundEnabled', soundEnabled);
+    });
+}
+
+// Initialize keyboard shortcuts
+function initializeKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + S: Start/Stop scanning
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            isScanning ? stopScanning() : startScanning();
+        }
+        
+        // Ctrl/Cmd + E: Export data
+        if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+            e.preventDefault();
+            exportData();
+        }
+        
+        // Ctrl/Cmd + C: Clear opportunities
+        if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+            e.preventDefault();
+            clearOpportunities();
+        }
+    });
+}
+
+// Load user settings
+function loadUserSettings() {
+    soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+    selectedStrategy = localStorage.getItem('selectedStrategy') || 'all';
+    
+    const minProfit = localStorage.getItem('minProfit');
+    if (minProfit) {
+        document.getElementById('min-profit').value = minProfit;
+    }
+    
+    const maxGas = localStorage.getItem('maxGas');
+    if (maxGas) {
+        document.getElementById('max-gas').value = maxGas;
+    }
+}
+
+// Save user settings
+function saveUserSettings() {
+    localStorage.setItem('minProfit', document.getElementById('min-profit').value);
+    localStorage.setItem('maxGas', document.getElementById('max-gas').value);
+    localStorage.setItem('selectedStrategy', selectedStrategy);
+}
+
+// Load user history
+function loadUserHistory() {
+    const history = localStorage.getItem(`history_${userAddress}`);
+    if (history) {
+        executedTrades = JSON.parse(history);
+        updateRecentExecutions();
+    }
+}
+
+// Filter opportunities by strategy
+function filterOpportunities() {
+    updateOpportunitiesList();
+}
+
+// Clear all opportunities
+function clearOpportunities() {
+    opportunities = [];
+    updateOpportunitiesList();
+    showNotification('Opportunities cleared', 'info');
+}
+
+// Export data to JSON
+function exportData() {
+    const exportData = {
+        timestamp: new Date().toISOString(),
+        opportunities: opportunities,
+        executedTrades: executedTrades,
+        profitHistory: profitHistory,
+        settings: {
+            minProfit: document.getElementById('min-profit').value,
+            maxGas: document.getElementById('max-gas').value,
+            strategy: selectedStrategy
+        }
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `arbitrage_data_${new Date().getTime()}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    
+    showNotification('Data exported successfully', 'success');
+}
+
+// Update analytics
+function updateAnalytics(opportunity) {
+    // Track strategy performance
+    if (!window.strategyAnalytics) {
+        window.strategyAnalytics = {};
+    }
+    
+    if (!window.strategyAnalytics[opportunity.strategy]) {
+        window.strategyAnalytics[opportunity.strategy] = {
+            count: 0,
+            totalProfit: 0,
+            avgProfit: 0,
+            bestProfit: 0
+        };
+    }
+    
+    const analytics = window.strategyAnalytics[opportunity.strategy];
+    analytics.count++;
+    analytics.totalProfit += parseFloat(opportunity.profit);
+    analytics.avgProfit = analytics.totalProfit / analytics.count;
+    analytics.bestProfit = Math.max(analytics.bestProfit, parseFloat(opportunity.profit));
+}
+
 // Auto-start scanning on load (demo mode)
 setTimeout(() => {
     startScanning();
+    showNotification('Scanner auto-started. Press Ctrl+S to toggle', 'info');
 }, 2000);
 
 // Update stats periodically
-setInterval(updateStats, 10000);
+setInterval(updateStats, 5000);
+
+// Save settings periodically
+setInterval(saveUserSettings, 30000);
